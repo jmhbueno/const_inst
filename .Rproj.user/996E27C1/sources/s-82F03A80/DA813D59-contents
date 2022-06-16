@@ -1,0 +1,674 @@
+---
+title: "Construção de Instrumentos - 2022"
+author: "Maurício Bueno"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: no
+  word_document:
+    toc: yes
+editor_options:
+  chunk_output_type: console
+  markdown: 
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+# Ativação de pacotes
+
+```{r}
+if(!require(tidyverse)) install.packages("tidyverse")
+if(!require(psych)) install.packages("psych")
+if(!require(knitr)) install.packages("knitr")
+if(!require(pander)) install.packages("pander")
+
+library(tidyverse)
+library(psych)
+```
+
+# Importação dos bancos de dados
+
+```{r}
+rwas <- readRDS("rwas.rds")
+big_five <- readRDS("big_five.rds")
+dataset <- readRDS("dataset.rds")
+
+glimpse(rwas)
+glimpse(big_five)
+glimpse(dataset)
+```
+
+```{r include=FALSE}
+
+# CRIAÇÃO DE VARIÁVEIS PARA ESTUDOS DE VALIDADE CONVERGENTE E VALIDADE DE CRITÉRIO
+
+
+## Criação de variáveis correlacionadas com os cinco grandes fatores, que sirvam para fazer análises de validade com base nas relações com variáveis externas
+
+## criar variável fluid representando inteligência fluída correlacionada com aber
+big_five$fluid <- 0.5*big_five$aber + sqrt(1-0.5^2)*rnorm(19719)
+corr.test(big_five$aber,big_five$fluid)
+
+## criar variável wellb representando bem-estar, correlacionada com neuroticismo
+big_five$wellb <- -0.55*big_five$neur + sqrt(1-(-0.55^2))*rnorm(19719)
+corr.test(big_five$neur,big_five$wellb)
+
+## criar variável empatia correlacionada com amabilidade
+big_five$empa <- 0.60*big_five$amab + sqrt(1-0.60^2)*rnorm(19719)
+corr.test(big_five$amab,big_five$empa)
+
+## Variáveis OCEAN para validade convergente.
+
+big_five$E <- big_five %>% select(c("E2","E6","E8","E9","E10")) %>% rowSums()
+big_five$N <- big_five %>% select(c("N2","N3","N4","N5","N10")) %>% rowSums()
+big_five$A <- big_five %>% select(c("A1","A2","A3","A8","A10")) %>% rowSums()
+big_five$C <- big_five %>% select(c("C2","C3","C4","C8","C10")) %>% rowSums()
+big_five$O <- big_five %>% select(c("O3","O4","O6","O7","O9" )) %>% rowSums()
+
+### usei recode para colocar os itens negativos contrários aos positivos.
+# expss::recode(big_five[ ,c("E2","E4","E6","E8","E10",
+#                                 "N2","N4",
+#                                 "A3","A5","A7",
+#                                 "C2","C4","C6","C8",
+#                                 "O2","O4","O6")]) <- c(1~5,2~4,3~3,4~2,5~1)
+
+write.csv2(big_five,"big_five.csv")
+
+# Amostragem de 500 sujeitos para utilização em aula
+big_five500 <- big_five[sample(nrow(big_five), 500), ]
+
+write.csv2(big_five500,"big_five500.csv")
+```
+
+# Evidências de validade com base na estrutura interna
+
+Para a realização dessas atividades, utilizaremos o banco de dados big_five.
+Acesse esse [link](https://ipip.ori.org/new_ipip-50-item-scale.htm) para compreender o banco de dados.
+
+```{r}
+# gerando figuras de correlações entre os itens para explicar análise fatorial
+names(big_five) %>% as.data.frame()
+
+# Correlação positiva
+pairs.panels(big_five500[,c(59,67)],
+             digits = 2,
+             method = "pearson",
+             cex.cor = 1,
+             )
+
+# Correlação negativa
+pairs.panels(big_five500[,c(60,70)],
+             digits = 2,
+             method = "pearson",
+             cex.cor = 1,
+             )
+
+# Correlação neutra
+pairs.panels(big_five500[,c(59,70)],
+             digits = 2,
+             method = "pearson",
+             cex.cor = 1,
+             )
+
+# Matriz de correlações
+pairs.panels(big_five500[,c(9:18,19:28)], 
+             digits = 2,
+             method = "pearson",
+             cex.cor = 4,
+             density = FALSE,
+             ellipses = FALSE,
+             show.points = FALSE
+             )
+
+```
+
+## Análise da estrutura fatorial (validade fatorial)
+
+Os itens foram construídos para representar os cinco grandes fatores de personalidade: extroversão, neuroticismo, amabilidade, conscienciosidade e abertura.
+Portanto, em uma análise fatorial, espera-se a formação de cinco fatores e que os itens construídos para a avaliação da extroversão se agrupem em um fator, que os de neuroticismo em outro fator e assim por diante.
+Essa é, na verdade, a hipótese que será testada neste estudo:
+
+Hipótese: Os itens se agruparão em cinco fatores, compatíveis com o modelo dos cinco grandes fatores de personalidade.
+
+Para a realização desta análise, seguiremos os seguintes passos:
+
+1.  Verificação das condições para a realização de uma análise fatorial
+2.  Escolha de um método apropriado para extração dos fatores
+3.  Identificação do número de fatores a serem retidos
+4.  Escolha do método de rotação dos fatores
+5.  Análise da estrutura fatorial
+
+### Verificação das condições para a realização de uma análise fatorial
+
+Verificar se os dados são bons para serem submetidos à análise fatorial, por meio dos critérios de **Kaizer-Meyer-Olkin (KMO)** e do **Teste de Esfericidade de Bartlett**.
+O índice de **KMO**, também conhecido como índice de adequação da amostra, é um teste estatístico que indica a proporção de variância dos itens que pode ser explicada por uma variável latente (Lorenzo-Seva, Timmerman & Kiers, 2011).
+Seu valor pode variar de zero a um.
+Como regra para interpretação dos índices de KMO, valores menores que 0,5 são considerados inaceitáveis, valores entre 0,5 e 0,7 são considerados medíocres; valores entre 0,7 e 0,8 são considerados bons; valores maiores que 0,8 e 0,9 são considerados ótimos e excelentes, respectivamente (Hutcheson & Sofroniou, 1999).
+O **teste de esfericidade de Bartlett**, por sua vez, avalia a matriz de correlações é similar a uma matriz-identidade, em que os elementos da diagonal são iguais a um e os demais elementos da matriz são aproximadamente iguais a zero (hipótese nula).
+Valores de p\<0,05 do teste de esfericidade de Bartlett indicam que a matriz de correlações é significativamente diferente de uma matriz-identidade, permitindo rejeitar a hipótese nula e considerar a matriz de correlações como fatorável (Tabachnick & Fidell, 2007).
+Para realizar esses cálculos, usaremos as funções `kmo()` e `bartlett.test()` dos pacotes `psych` e `stats`, respectivamente.
+
+```{r}
+big_five %>% select(9:58) %>% KMO()
+big_five %>% select(9:58) %>% bartlett.test()
+```
+
+Neste caso, observa-se que o KMO foi de 0,91 e o Teste de Esfericidade de Bartlett foi estatísticamente significativo ao nível de p \< 2.2e-16 (lê-se 2,2 x 10^-16^).
+Portanto, os dados podem ser considerados adequados para a realização da análise fatorial.
+Vencida essa primeira etapa, passamos à escolha de um método apropriado para a realização da análise fatorial.
+
+### Escolha de um método apropriado para extração dos fatores
+
+A extração de fatores numa análise fatorial pode ser realizada de várias formas.
+É importante compreender como cada uma atua, para escolher a opção que melhor se adequa aos dados amostrais.
+A seguir, uma descrição das opções de factor method (fm), um dos argumentos da função `fa()` do pacote `psych`.
+
+fm="ml" fará uma análise fatorial de máxima verossimilhança (maximum likelihood).
+Requer que os dados sejam distribuídos de forma normal (Costello & Osborne, 2005; Fabrigar e cols., 1999).
+
+fm="pa" extrairá os fatores com base na fatoração dos eixos principais (*principal axis factoring)*, em que a diagonal da matriz de correlações é substituída pelas comunalidades dos itens, isto é, só a variância dos itens que é compartilhada com os outros itens do instrumento.
+Esse método apresenta bons resultados para dados não-normais (Costello & Osborne, 2005; Fabrigar e cols., 1999).
+Esse é um dos motivos pelos quais é um método bastante empregado.
+
+Os métodos de fatoração fm="minres" (minimun residuals) e fm="uls" (unweighted least squares) extrairão os fatores com base na obtenção de resíduos mínimos.
+Ambos usam uma primeira derivada.
+O uls pode ser usado tanto com dados com distribuição normal quanto não-normal.
+Funciona muito bem com dados dicotômicos, como os de acerto e erro, por exemplo (Muthén, 1978).
+
+fm="gls" extrairá os fatores com base no mínimos quadrados ponderados generalizados (Generalized Least Squares - GLS), que são mais utilizados para dados politômicos ou intervalares (Muthén, 1984).
+
+fm="wls" fará uma extração com base nos mínimos quadrados ponderados (WLS).
+Uma versão bastante empregada atualmente é o Diagonally Weighted Least Squares (DWLS), que também não requer distribuição normal dos dados e ainda pode ser utilizada quando os dados são considerados ordinais.
+O wls está disponível no pacote \`psych\`, mas o DWLS, infelizmente, não.
+
+Outras opções menos referidas na literatura são o fm="ols", que difere muito ligeiramente de "minres"; o fm="minchi", que minimizará o qui-quadrado ponderado pelo tamanho da amostra ao tratar correlações de pares com diferentes números de indivíduos por par; o fm ="minrank", que fará uma análise fatorial de classificação mínima; o "old.min" , que fará a extração com base na forma mais tradicional dos resíduos mínimos; e o fm="alpha" fará a análise do fator alfa conforme descrito em Kaiser e Coffey (1965).
+
+**Decisão:** Como nossos dados politômicos (escala Likert de 1 a 5) e ordinais (as distâncias entre os intervalos de 1 a 2 de 2 a 3 e assim por diante, podem variar de item para item, pois não são padronizadas por uma unidade de medida), então **optaremos pela utilização do método de extração baseado nos mínimos quadrados ponderados generalizados *(Generalized Least Squares - GLS)***.
+
+### Identificação do número de fatores a serem retidos
+
+Teoricamente, a pior análise fatorial é a que apresenta número de fatores igual ao número de itens, porque teríamos um item por fator e isso não atinge o objetivo de uma análise fatorial, que é justamente reduzir o número de informações pelo agrupamento dos itens similares em fatores. Mas quantos fatores?
+
+Para responder a essa pergunta foram desenvolvidos alguns métodos.
+Descreveremos 3 deles: o método de Kaiser-Guttman, o do scree-plot ou gráfico de sedimentação (Cattell, 1966) e o da análise paralela (Horn, 1965).
+
+O **método de Kaiser-Guttman** é o mais simples e inclusivo de todos e diz que devemos reter os fatores que apresentarem *eigenvalues* superiores a 1.
+O **método do scree-plot** consiste na observação de um gráfico em que são plotados os eigenvalues de todos os fatores.
+Esse gráfico tende a apresentar um formato em L, com os fatores mais importantes à esquerda, formando a linha vertical do L.
+A técnica, então, consiste em identificar o ponto de inflexão da curva formada pelos pontos e contar o número de pontos (fatores) que estão à esquerda desse ponto.
+Teoricamente, esses são os fatores mais importantes.
+
+O método da análise paralela consiste em traçar dois scree-plots, um a partir dos dados experimentais e outro com dados distribuídos aleatoriamente, mas com o mesmo número de itens do banco de dados experimental.
+Comparam-se os gráficos e conta-se o número de fatores experimentais cujos eigenvalues foram superiores aos obtidos com dados aleatórios.
+
+```{r}
+# scree-plot
+scree_plot <- big_five %>% select(9:58) %>% scree(pc = FALSE)
+scree_plot$fv
+```
+
+O comando `scree_plot$fv` mostra os eigenvalues de todos os fatores possíveis de serem extraídos.
+São cincoenta fatores, o que coincide com o número de itens submetidos à análise fatorial.
+Nota-se que há **sete fatores** à esquerda do ponto de inflexão da curva de sedimentação (scree-plot).
+No entanto, dois desses fatores apresentam eigenvalues inferiores a 1 (critério de Kaiser-Guttman).
+Portanto, com base nesses dois critérios, reteríamos cinco fatores, o que coincide com a proposição teórica.
+Vejamos agora, como ficaria a situação com uma análise paralela.
+
+```{r}
+# análise paralela
+parallel <- big_five %>% 
+            select(9:58) %>% 
+            fa.parallel(fm="gls",n.obs=1000, fa="fa", cor="poly")
+parallel$fa.values
+parallel$fa.sim
+```
+
+Nesse caso, também foi possível observar que sete fatores da amostra experimental apresentaram eigenvalues superiores aos seus correspondentes dos dados aleatórios.
+No entanto, os dois últimos fatores experimentais não atenderam ao critério de Kaizer-Guttman, apresentando eigenvalues inferiores a 1.
+Portanto, apenas cinco fatores devem ser retidos na estrutura fatorial.
+
+### Escolha do método de rotação dos fatores
+
+A rotação dos eixos é um conjunto de técnicas que facilitam a identificação dos fatores.
+Existem técnicas de rotação ortogonal, para fatores que supostamente não estão correlacionados entre si (varimax), e técnicas de rotação oblíqua, para fatores que podem estar correlacionados entre si (oblimin, promax e geomin).
+Em nosso caso, vamos optar pela **rotação oblíqua geomin**, pois os fatores podem apresentar alguma correlação entre si.
+Essa técnica não é afetada caso os fatores não estejam correlacionados, por isso, prefere-se a utilização de rotação oblíqua.
+
+### Análise da estrutura fatorial
+
+Agora, já temos todas as informações que precisamos para implementar a análise fatorial.
+Já sabemos que há condições para a realização da análise, escolhemos o método gls de extração dos fatores, identificamos cinco fatores a serem extraídos e escolhemos o método oblíquo oblimin para a rotação dos fatores.
+Falta apenas colocar essas informações no comando `fa()` do pacote `psych` e rodar a análise.
+
+```{r}
+# AFE
+fa_bf <-                     # salve as informações num objeto chamado fa_bf
+         big_five %>%        # pegue o dataframe big_five
+         select(9:58) %>%    # selecione as colunas de 9 a 58 (itens do teste)
+         fa(nfactors = 5,    # faça uma análise fatorial, extraindo cinco fatores
+         cor = "cor",        # utilize correlações para montar uma matriz
+         fm = "gls",         # utilize o método gls para extrair os fatores
+         rotate = "geominQ") # utilize o método "geominQ" para rotacionar os fatores
+fa_bf
+fa_bf$loadings
+```
+
+Os resultados mostram que, de fato, os itens se distribuiram conforme o esperado pela teoria, apresentando maior carga nos fatores correspondentes a um dos cinco grandes fatores de personalidade.
+Isso confirma a suposição teórica de que os comportamentos descritos nos itens estariam relacionados ao um construto subjacente e permite que as respostas numéricas dadas aos itens sejam somadas, uma vez que eles são da mesma natureza.
+Então, vamos criar os escores dos participantes, com base no resultados da análise fatorial.
+
+```{r}
+# OBS: Para o cálculo das pontuações, fez-se a inversão dos itens negativos, usando a sintaxe que está na linha 73.
+# Depois de calcular as pontuações, reverteu-se o dataframe ao formato das respostas originais
+
+# big_five$extr <- big_five %>% select( 9:18) %>% rowMeans()
+# big_five$neur <- big_five %>% select(19:28) %>% rowMeans()
+# big_five$amab <- big_five %>% select(29:38) %>% rowMeans()
+# big_five$cons <- big_five %>% select(39:48) %>% rowMeans()
+# big_five$aber <- big_five %>% select(49:58) %>% rowMeans()
+```
+
+# Evidências de validade com base nas relações com variáveis externas
+
+Esse tipo de validade procura evidências sobre as relações entre as pontuações no teste e outras medidas.
+São importantes indicadores de que o teste converge (se correlaciona) com medidas semelhantes (validade convergente), não se correlaciona com medidas das quais difere conceitualmente (validade discriminante), para a identificação das variáveis que podem ser preditas pelas pontuações no teste (validade de critério), ou para a identificação de diferenças entre grupos nas pontuações do teste (diferenças entre grupos).
+Vejamos esses tipos de validade na prática.
+
+**IMPORTANTE.: Os escores em E, N, A, C e O e em inteligência fluída, bem-estar e empatia foram gerados artificialmente e acrescentados ao banco de dados big-five. Portanto, esses resultados são meramente ilustrativos das técnicas e não representam a realidade.**
+
+## Validade Convergente
+
+Uma forma de estudar a validade de um novo instrumento é verificar se seus escores convergem com escores de outro instrumento que avaliam o mesmo construto, ou um construto muito semelhante.
+Neste caso, podemos verficar as relações entre as pontuações do instrumento que foi validado fatorialmente, com as de outro instrumento que mede os mesmos cinco grandes fatores, e que estão no banco de dados com os nomes de E, N, A. C e O.
+Espera-se que haja correlações elevadas entre os fatores correspondentes nos dois instrumentos.
+
+```{r}
+corr.test(big_five[,59:63],big_five[,67:71])$r %>% pander::pander()
+```
+
+Com base nesses resultados, podemos dizer que o instrumento que estamos validando converge com uma medida dos cinco grandes fatores já validada, e que, portanto, pode ser utilizado para a medida dos mesmos construtos.
+
+## Validade de Critério
+
+Outra forma de verificar a validade com base nas relações com variáveis externas é verificar se os escores do teste em estudo predizem algo do mundo real.
+Nesse caso, vamos verificar se é possível predizer inteligência fluída, bem-estar e empatia, supondo que os traços de abertura, neuroticismo e amabilidade, respectivamente, estarão mais correlacionados com esses critérios.
+
+```{r}
+corr.test(big_five[,59:63],big_five[,64:66])$r %>% pander::pander()
+```
+
+Com base nos resultados obtidos, pode-se dizer que é possível predizer a inteligência fluída, o bem-estar e a empatia por meio dos escores de abertura, neuroticismo e amabilidade, respectivamente.
+
+# Fidedignidade (ou precisão)
+
+De forma geral, a fidedignidade se refere ao quanto um instrumento está livre de **erros de mensuração**.
+Toda medida contém algum erro.
+O problema ocorre quando o erro é maior do que a precisão.
+De forma bem prática, os índices de precisão indicam o quanto podemos confiar nas pontuações que as pessoas obtêm num teste.
+Por exemplo, num teste de inteligência de alta precisão, com 20 itens, se uma pessoa obteve 12 pontos, podemos considerar que essa foi a pontuação empírica da pessoa e sua pontuação verdadeira (sempre desconhecida) não estaria muito longe desses 12 pontos.
+Já num teste com baixa precisão em que uma pessoa obtém 12 pontos, não se pode confiar na possibilidade de esses 12 pontos estarem próximos de sua pontuação verdadeira, que poderia variar muito mais do que num teste preciso.
+Então, se considerarmos que há sempre um intervalo dentro do qual está a pontuação que a pessoa obteve, o índice de precisão nos indica se esse intervalo é muito grande ou muito pequeno.
+
+Há muitas formas de calcular a precisão de um teste, mas as mais comuns são o **teste-reteste**, em que se calcula a correlação entre duas aplicações do mesmo teste; o **método das metades**, em que se calcula a correlação entre duas metades dos itens de um teste ou escala de um teste; o **coeficiente alfa de Cronbach**, que é uma medida da variância compartilhada entre os itens, em relação à variância total; e o **coeficiente ômega de McDonald**, que é calculado com base nas cargas fatoriais dos itens, levando em conta o peso que cada item tem no instrumento.
+O coeficiente alfa e o ômega são denominados de **índices de consistência interna**.
+
+Qualquer que seja a técnica empregada para calculá-lo, os índices de precisão variam de zero a 1.
+Pesquisas demonstram que valores do **Alfa de Cronbach** acima de 0,9 são considerados exemplares, valores entre 0,9 e 0,7 são adequados e entre 0,7 e 0,6 são aceitáveis.
+Porém, resultados em que seu coeficiente se encontra entre 0,6 e 0,5 são questionáveis e abaixo de 0,5 são insuficientes (Maroco & Garcia-Marques, 2012).
+
+Por sua vez, um bom valor do coeficiente **Ômega de McDonald** deve estar entre 0,7 e 0,9, e valores iguais ou acima de 0,65 podem ser aceitos (Ventura-Leon & Caycho-Rodriguez, 2017).
+Na resolução nº 09/2018, do Conselho Federal de Psicologia (CFP), em que se apresentam os critérios mínimos para aprovação de testes psicológicos pelo Sistema de Avaliação de Testes Psicológicos (SATEPSI), são aceitos índices de consistência interna iguais ou superiores a 0,6 (CFP, 2018).
+
+### Cálculo do Coeficiente Alfa de Cronbach
+
+O cálculo dos coeficientes de precisão é feito por fator ou escala do instrumento.
+Por isso, num processo de construção de instrumentos, é importante realizar uma análise fatorial antes de calcular as precisões, pois é preciso conhecer a distribuição dos itens pelos fatores (estrutura fatorial) para poder calcular os índices de precisão.
+Abaixo estão os cálculos dos coeficientes alfa de Cronbach para os fatores do `big_five`.
+
+```{r}
+# Coeficiente Alfa de Cronbach
+# Os códigos dizem o seguinte: pegue o dataframe big_five, selecione as colunas de 9 a 18 (correspondentes aos itens de extroversão) e calcule o coeficiente alfa. Em todos os casos esse cálculo deve ser salvo em um objeto do R, cujo nome foi criado (alfa_extr, alfa_neur, etc... )
+
+# expss::recode(big_five[ ,c("E2","E4","E6","E8","E10",
+#                                 "N2","N4",
+#                                 "A3","A5","A7",
+#                                 "C2","C4","C6","C8",
+#                                 "O2","O4","O6")]) <- c(1~5,2~4,3~3,4~2,5~1)
+
+## extr
+alfa_extr <- big_five %>% select( 9:18) %>% psych::alpha(keys = c(1,-1,1,-1,1,-1,1,-1,1,-1))
+## neur
+alfa_neur <- big_five %>% select(19:28) %>% psych::alpha(keys = c(1,-1,1,-1,1,1,1,1,1,1))
+## amab
+alfa_amab <- big_five %>% select(29:38) %>% psych::alpha(keys = c(1,1,-1,1,-1,1,-1,1,1,1))
+## cons
+alfa_cons <- big_five %>% select(39:48) %>% psych::alpha(keys = c(1,-1,1,-1,1,-1,1,-1,1,1))
+## aber
+alfa_aber <- big_five %>% select(49:58) %>% psych::alpha(keys = c(1,-1,1,-1,1,-1,1,1,1,1))
+
+# Para ver os resultados usamos os seguintes códigos
+
+alfa_extr$total$std.alpha
+alfa_neur$total$std.alpha
+alfa_amab$total$std.alpha
+alfa_cons$total$std.alpha
+alfa_aber$total$std.alpha
+
+# Para colocar esses resultados em uma tabela
+
+data.frame(Fatores = c("Extroversão",
+                       "Neuroticismo",
+                       "Amabilidade",
+                       "Conscienciosidade",
+                       "Abertura"),
+           "Alfa de Cronbach" = c(round(alfa_extr$total$std.alpha, digits = 3),
+                                  round(alfa_neur$total$std.alpha, digits = 3),
+                                  round(alfa_amab$total$std.alpha, digits = 3),
+                                  round(alfa_cons$total$std.alpha, digits = 3),
+                                  round(alfa_aber$total$std.alpha, digits = 3))) %>% knitr::kable()
+```
+
+Como se pode observar, todos os coeficientes alfa de Cronbach se situaram entre 0,7 e 0,9, podendo ser considerados adequados (Maroco & Garcia-Marques, 2012).
+A seguir o cálculo dos coeficientes ômega de McDonald.
+
+### Cálculo do coeficiente ômega de McDonald
+
+O cálculo desse coeficiente parte das cargas fatoriais dos itens, que indicam a força com que cada item se relaciona com o traço latente (fator).
+Quanto mais próxima de 1 estiver a carga fatorial, mais variância o item compartilha com o fator, portanto, menos especificidade (erro).
+O código para cálculo do coeficiente ômega é muito semelhante ao anterior.
+
+```{r}
+## Coeficiente Ômega de McDonald
+
+omega_extr <- big_five %>% select( 9:18) %>% omega(poly=TRUE,keys = c(1,-1,1,-1,1,-1,1,-1,1,-1))
+omega_neur <- big_five %>% select(19:28) %>% omega(poly=TRUE,keys = c(1,-1,1,-1,1,1,1,1,1,1))
+omega_amab <- big_five %>% select(29:38) %>% omega(poly=TRUE,keys = c(1,1,-1,1,-1,1,-1,1,1,1))
+omega_cons <- big_five %>% select(39:48) %>% omega(poly=TRUE,keys = c(1,-1,1,-1,1,-1,1,-1,1,1))
+omega_aber <- big_five %>% select(49:58) %>% omega(poly=TRUE,keys = c(1,-1,1,-1,1,-1,1,1,1,1))
+
+# para obter os resultados
+omega_extr$omega.tot
+omega_neur$omega.tot
+omega_amab$omega.tot
+omega_cons$omega.tot
+omega_aber$omega.tot
+
+# para apresentar os resultados numa tabela
+data.frame(Fatores = c("Extroversão",
+                       "Neuroticismo",
+                       "Amabilidade",
+                       "Conscienciosidade",
+                       "Abertura"),
+           "Ômega de McDonald" = c(round(omega_extr$omega.tot, digits = 3),
+                                   round(omega_neur$omega.tot, digits = 3),
+                                   round(omega_amab$omega.tot, digits = 3),
+                                   round(omega_cons$omega.tot, digits = 3),
+                                   round(omega_aber$omega.tot, digits = 3))) %>% knitr::kable()
+```
+
+Como se pode observar, todos os valores de ômega se situaram próximos a 0,9, podendo ser considerados adequados do ponto de vista métrico (Ventura-Leon & Caycho-Rodriguez, 2017).
+
+# Exercício (prática em aula)
+
+Observar as cargas fatoriais e índices de fidedignidade e escolher os cinco melhores itens de cada fator.
+Realizar uma nova análise fatorial com esses itens, eliminar os que não apresentarem carga superior a 0,3 e calcular os coeficientes de fidedignidade dos fatores com número reduzido de itens.
+
+Dicas:
+
+Para selecionar itens, pode-se usar o seguinte código:
+
+`big_five %>% select(c(9:13,19:23,29:33,39:43,49:53))`
+
+Esse código diz o seguinte: pegue o arquivo big_five e selecione os itens de 9 a 13, de 19 a 23, e assim por diante...
+
+A letra c, que aparece dentro da função select é de concatenar, pois como temos várias grupos de itens intercalados, é preciso dizer para o programa que gostaríamos que esses itens fossem selecionados e dispostos um na sequência do outro.
+
+Aqui, a tarefa foi facilitada pelo fato de os cinco primeiros itens de cada fator estarem agrupados
+
+Se quiséssemos selecionar os cinco itens pares de cada fator, ó código seria semelhante, mas teria que ser escrito item por item.
+
+`big_five %>% select(c(10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58))`
+
+Essa função ainda tem um problema: não salvamos o novo arquivo!
+A função está apenas selecionando os itens e nos mostrando os resultados.
+Para salver é necessário dar um nome ao arquivo, usando a função abaixo.
+
+`novo_arquivo <- big_five %>% select(c(10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58))`
+
+Repare que isso gerará um novo arquivo no ambiente de trabalho (quadrante à direita), chamado novo_arquivo.
+
+```{r eval=FALSE, include=FALSE}
+# para selecionar itens, pode-se usar o seguinte código
+
+big_five %>% select(c(9:13,19:23,29:33,39:43,49:53))   
+# esse código diz o seguinte: pegue o arquivo big_five e selecione os itens de 9 a 13, de 19 a 23, e assim por diante...
+# a letra c, que aparece dentro da função select é de concatenar, pois como temos várias grupos de itens intercalados, é preciso dizer para o programa que gostaríamos que esses itens fossem selecionados e dispostos um na sequência do outro. 
+
+# aqui, a tarefa foi facilitada pelo fato de os cinco primeiros itens de cada fator estarem agrupados
+# se quiséssemos selecionar os cinco itens pares de cada fator, ó código seria semelhante, mas teria que ser escrito item por item.
+
+big_five %>% select(c(10,12,14,16,18,
+                      20,22,24,26,28,
+                      30,32,34,36,38,
+                      40,42,44,46,48,
+                      50,52,54,56,58))  
+
+# essa função ainda tem um problema: não salvamos o novo arquivo
+# A função está apenas selecionando os itens e nos mostrando no quadrante abaixo
+# para salver é necessário dar um nome ao arquivo, usando a função abaixo.
+
+novo_arquivo <- big_five %>% select(c(10,12,14,16,18,
+                                      20,22,24,26,28,
+                                      30,32,34,36,38,
+                                      40,42,44,46,48,
+                                      50,52,54,56,58))  
+# repare que agora temos um novo arquivo no ambiente de trabalho (quadrante à direita), chamado novo_arquivo
+
+```
+
+# Exercício com os cinco itens com cargas fatoriais superiores
+
+```{r}
+# com base na análise fatorial geral, selecionar os cinco itens de cada fator com cargas mais elevadas.
+names(big_five) %>% as.data.frame()
+big_five %>% 
+  select(c(32:35,37,39,43:45,47,9,10,12,13,15,19,24:27,49,50,58,53,56)) %>% 
+  fa(nfactors = 5,
+     cor = "poly",
+     fm = "uls",
+     rotate = "oblimin")
+  
+
+# fa_bf
+# fa_bf$loadings  
+
+```
+
+
+# Exercícios com novo banco de dados
+
+```{r}
+names(dataset) %>% as.data.frame()
+bai_bdi <- dataset %>% select(46:87)
+
+# salvar em banco de dados
+write.csv2(bai_bdi,"bai_bdi.csv")
+
+```
+
+### Verificação das condições para a realização de uma análise fatorial
+
+```{r}
+bai_bdi %>% KMO()
+bai_bdi %>% bartlett.test()
+```
+
+### Identificação do número de fatores a serem retidos
+
+```{r}
+# scree-plot
+bai_bdi_scree <- bai_bdi %>% scree(pc = FALSE)
+bai_bdi_scree$fv
+
+# análise paralela
+bai_bdi_parallel <- bai_bdi %>% 
+                    fa.parallel(fm="gls",n.obs=1000, fa="fa", cor="poly")
+bai_bdi_parallel$fa.values
+bai_bdi_parallel$fa.sim
+```
+
+### Análise da estrutura fatorial
+
+```{r}
+# AFE
+fa_bai_bdi <- bai_bdi %>%
+              fa(nfactors = 2,   
+              cor = "cor",       
+              fm = "gls",        
+              rotate = "geominQ")
+fa_bai_bdi
+fa_bai_bdi$loadings
+```
+
+As instruções do BAI pedem que o respondente leia atentamente os sintomas descritos nos itens e que assinale o quanto eles o têm incomodado durante a última semana: **nada**, **levemente** (não incomodou muito), **moderadamente** (foi muito desagradável, mas possível de suportar), **gravemente** (quase não conseguiu suportar).
+Os sintomas descritos são os seguintes:
+
+```{r echo=FALSE}
+data.frame(BAI = c( 
+            "1.Dormência ou formigamento",
+            "2.Sensação de calor",
+            "3.Tremores nas pernas",
+            "4.Incapaz de relaxar",
+            "5.Medo que aconteça o pior",
+            "6.Atordoado ou tonto",
+            "7.Palpitação ou aceleração do coração",
+            "8.Sem equilíbrio",
+            "9.Aterrorizado",
+            "10.Nervoso",
+            "11.Sensação de sufocação",
+            "12.Tremores nas mãos",
+            "13.Trêmulo",
+            "14.Medo de perder o controle",
+            "15.Dificuldade de respirar",
+            "16.Medo de morrer",
+            "17.Assustado",
+            "18.Indigestão ou desconforto no abdômen",
+            "19.Sensação de desmaio",
+            "20.Rosto afogueado",
+            "21.Suor (não devido ao calor)")) %>% knitr::kable()
+```
+
+De forma semelhante, o BDI apresenta grupos de 4 itens, cujo sintoma principal vai aumentando de intensidade.
+O respondente é convidado a assinalar a frase que mais se aplica ao seu caso.
+Por exemplo, o primeiro item apresenta as seguintes afirmações:
+
+0 Não me sinto triste 1 Eu me sinto triste 2 Estou sempre triste e não consigo sair disto 3 Estão tão triste ou infeliz que não consigo suportar
+
+A seguir, são apresentados não os itens em si, mas os temas de cada grupo de itens do BDI.
+
+```{r echo=FALSE}
+
+data.frame(BDI = c("1. Triste ou infeliz",
+                   "2. Sem esperança no futuro",
+                   "3. Fracassado",
+                   "4. Insatisfeito ou aborrecido com tudo",
+                   "5. Culpado",
+                   "6. Punido",
+                   "7. Odiar-se",
+                   "8. Culpar-se",
+                   "9. Vontade de se matar",
+                   "10.Não consegue chorar",
+                   "11.Sentir-se irritado",
+                   "12.Perda de interesse por outras pessoas",
+                   "13.Incapaz de tomar decisões",
+                   "14.Sentir-se feio",
+                   "15.Não conseguir realizar qualquer trabalho",
+                   "16.Acordar muito mais cedo e não conseguir dormir",
+                   "17.Cansaço para fazer qualquer coisa",
+                   "18.Não ter apetite",
+                   "19.Perda de peso",
+                   "20.Preocupação com problemas físicos",
+                   "21.Perda de interesse por sexo")) %>% knitr::kable()
+```
+
+### Diferenças entre grupos
+
+```{r}
+# Calcular as pontuações no BAI e no BDI
+bai_bdi$bai <- bai_bdi %>% select( 1:21) %>% rowSums()
+bai_bdi$bdi <- bai_bdi %>% select(22:42) %>% rowSums()
+
+# Relação do BAI/BDI com cyberbullying
+bai_bdi$cybvic <- dataset %>% select(26:35) %>% rowSums()
+bai_bdi$cybagr <- dataset %>% select(36:45) %>% rowSums()
+bai_bdi$pais <- dataset$country
+
+
+
+names(bai_bdi) %>% as.data.frame()
+glimpse(bai_bdi)
+View(bai_bdi)
+```
+
+### Fidedignidade
+
+```{r}
+## BAI
+alfa_BAI <- bai_bdi %>% select( 1:21) %>% alpha()
+## BDI
+alfa_BDI <- bai_bdi %>% select(22:42) %>% alpha()
+
+# Para ver os resultados usamos os seguintes códigos
+
+alfa_BAI$total$std.alpha
+alfa_BDI$total$std.alpha
+
+## Coeficiente Ômega de McDonald
+omega_BAI <- bai_bdi %>% select( 1:21) %>% omega(poly=TRUE)
+omega_BDI <- bai_bdi %>% select(22:42) %>% omega(poly=TRUE)
+
+# para obter os resultados
+omega_BAI$omega.tot
+omega_BDI$omega.tot
+```
+
+# Padronização
+
+```{r}
+# Cálculo das médias
+mean_extr  <- mean(big_five$extr) %>% round(digits=2)
+mean_neur  <- mean(big_five$neur) %>% round(digits=2)
+mean_amab  <- mean(big_five$amab) %>% round(digits=2)
+mean_cons  <- mean(big_five$cons) %>% round(digits=2)
+mean_aber  <- mean(big_five$aber) %>% round(digits=2)
+
+# Cálculo dos desvios padrões
+sd_extr  <- sd(big_five$extr) %>% round(digits=2)
+sd_neur  <- sd(big_five$neur) %>% round(digits=2)
+sd_amab  <- sd(big_five$amab) %>% round(digits=2)
+sd_cons  <- sd(big_five$cons) %>% round(digits=2)
+sd_aber  <- sd(big_five$aber) %>% round(digits=2)
+
+p_extr  <- round(pnorm(seq(from=1,by=0.1,length=41),mean_extr,sd_extr)*100,0)
+p_neur  <- round(pnorm(seq(from=1,by=0.1,length=41),mean_neur,sd_neur)*100,0)
+p_amab  <- round(pnorm(seq(from=1,by=0.1,length=41),mean_amab,sd_amab)*100,0)
+p_cons  <- round(pnorm(seq(from=1,by=0.1,length=41),mean_cons,sd_cons)*100,0)
+p_aber  <- round(pnorm(seq(from=1,by=0.1,length=41),mean_aber,sd_aber)*100,0)
+
+data.frame("Pontuação bruta" = seq(from=1,by=0.1,length=41),
+           Extroversão       = p_extr,
+           Neuroticismo      = p_neur,
+           Amabilidade       = p_amab,
+           Conscienciosidade = p_cons,
+           Abertura          = p_aber) %>% knitr::kable()
+```
+
+```{r}
+names(rwas)
+```
+

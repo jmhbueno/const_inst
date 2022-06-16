@@ -1,0 +1,32 @@
+{
+    "id": "DA813D59",
+    "path": "~/R/const_inst/const_inst.Rmd",
+    "project_path": "const_inst.Rmd",
+    "type": "r_markdown",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1646927554000.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "595,58",
+        "scrollLine": "574",
+        "last_setup_crc32": "",
+        "chunk_output_type": "console",
+        "rmdVisualMode": "false",
+        "rmdVisualWrapConfigured": "true",
+        "docOutlineVisible": "0",
+        "rmdVisualModeLocation": "3145:1545.4544677734375"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1647288738,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1647288739513,
+    "read_only": false,
+    "read_only_alternatives": []
+}
